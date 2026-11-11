@@ -1,0 +1,36 @@
+# Python 缓存文件
+__pycache__/
+*.py[cod]
+
+# Python 虚拟环境
+.venv/
+venv/
+env/
+
+# Python 打包生成文件
+build/
+dist/
+*.spec
+
+# 浏览器用户数据、登录状态和缓存
+browser_data/
+
+# 环境变量及敏感配置
+.env
+.env.*
+
+# 测试文件
+yuketangHTML/
+
+# VS Code 配置
+.vscode/
+
+# PyCharm 配置
+.idea/
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
