@@ -98,8 +98,7 @@ def set_video_speed(page: Page, speed: float = 2.0) -> None:
     if not result.get("success"):
         raise RuntimeError(f"设置视频倍速失败：{result}")
 
-    print(f"播放速度：{result['playbackRate']}x")
-    print(f"播放器显示：{result['speedText']}")
+    print(f"视频播放速度：{result['playbackRate']}x")
 
 
 def set_video_mute(page: Page) -> None:
@@ -187,11 +186,8 @@ def set_video_mute(page: Page) -> None:
 
     if not result["mutedIcon"] or not (result["muted"] or result["volume"] == 0):
         raise RuntimeError(f"播放器原生静音设置失败：{result}")
-
-    print("播放器静音图标：已开启")
-    print(f"实际静音状态：{result['muted']}")
-    print(f"视频音量：{result['volume']}")
-    print(f"播放器音量显示：{result['volumeText']}")
+    
+    print(f"播放器音量：{result['volumeText']}")
 
 
 def start_video(page: Page) -> None:
