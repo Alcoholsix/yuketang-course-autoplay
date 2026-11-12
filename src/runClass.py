@@ -262,12 +262,15 @@ def run_class(page: Page) -> None:
 
     print("等待视频播放器加载……")
 
-    page.wait_for_selector(
-        "video.xt_video_player",
-        state="attached",
-        timeout=30000
-    )
+    video = page.locator("video.xt_video_player")
 
+    video.wait_for(state="attached", timeout=30000)
+
+    # 1. 视频元素出现后立即静音
+    print("视频元素已出现，立即执行静音")
+    set_video_mute(page)
+
+    # 2. 等待视频元数据加载
     page.wait_for_function(
         """() => {
             const video = document.querySelector('video.xt_video_player');
@@ -278,20 +281,19 @@ def run_class(page: Page) -> None:
 
     print("视频播放器已加载")
 
-    # 1. 设置倍速
+    # 设置倍速
     print("准备设置视频倍速")
     set_video_speed(page, 2.0)
 
-    # 2. 使用播放器原生音量按钮静音
-    print("准备设置播放器静音")
+    # 确认静音
     set_video_mute(page)
 
-    # 3. 使用播放器原生播放按钮启动视频
+    # 启动视频
     print("准备启动视频")
     start_video(page)
 
-    # 4. 检查最终播放状态
-    result = page.locator("video.xt_video_player").evaluate(
+    # 6. 检查最终播放状态
+    result = video.evaluate(
         """video => ({
             paused: video.paused,
             muted: video.muted,
@@ -310,4 +312,3 @@ def run_class(page: Page) -> None:
         raise RuntimeError("视频没有保持静音状态")
 
     print("视频播放配置完成")
-
