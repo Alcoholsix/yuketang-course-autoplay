@@ -1,25 +1,59 @@
-# runClass 文件包含视频二倍速设置，视频播放和音频精心三个功能
-# 以方便您能更好，更方便，更轻松的听课！  ：)
-
 from playwright.sync_api import Page
+
+
+def mute_video_immediately(page: Page) -> None:
+    """视频元素出现后立即执行静音。"""
+
+    video = page.locator("video.xt_video_player")
+    video.wait_for(state="attached", timeout=30000)
+
+    result = video.evaluate(
+        """video => {
+            video.muted = true;
+            video.volume = 0;
+
+            return {
+                muted: video.muted,
+                volume: video.volume
+            };
+        }"""
+    )
+
+    if not result["muted"] and result["volume"] != 0:
+        raise RuntimeError(f"视频立即静音失败：{result}")
+
+    print("视频已立即静音")
 
 
 def set_video_speed(page: Page, speed: float = 2.0) -> None:
     """设置视频倍速，并同步播放器显示。"""
 
-    page.wait_for_selector("video.xt_video_player", state="attached", timeout=30000)
+    page.wait_for_selector(
+        "video.xt_video_player",
+        state="attached",
+        timeout=30000
+    )
 
     result = page.evaluate(
         """(speed) => {
             const video = document.querySelector('video.xt_video_player');
 
             if (!video) {
-                return { success: false, error: '没有找到视频元素' };
+                return {success: false, error: '没有找到视频元素'};
             }
 
-            const speedButton = document.querySelector('xt-speedbutton.xt_video_player_speed');
-            const speedList = speedButton?.querySelector('.xt_video_player_common_list_wrap');
-            const speedOption = speedButton?.querySelector(`li[data-speed="${speed}"]`);
+            const speedButton = document.querySelector(
+                'xt-speedbutton.xt_video_player_speed'
+            );
+
+            const speedList = speedButton?.querySelector(
+                '.xt_video_player_common_list_wrap'
+            );
+
+            const speedOption = speedButton?.querySelector(
+                `li[data-speed="${speed}"]`
+            );
+
             const speedValue = speedButton?.querySelector('xt-speedvalue');
 
             let nativeClick = false;
@@ -48,8 +82,16 @@ def set_video_speed(page: Page, speed: float = 2.0) -> None:
                     buttons: 1
                 };
 
-                for (const type of ['mousemove', 'mouseover', 'mousedown', 'mouseup', 'click']) {
-                    speedOption.dispatchEvent(new MouseEvent(type, eventOptions));
+                for (const type of [
+                    'mousemove',
+                    'mouseover',
+                    'mousedown',
+                    'mouseup',
+                    'click'
+                ]) {
+                    speedOption.dispatchEvent(
+                        new MouseEvent(type, eventOptions)
+                    );
                 }
 
                 if (oldStyle === null) {
@@ -62,17 +104,24 @@ def set_video_speed(page: Page, speed: float = 2.0) -> None:
             }
 
             const updateDisplay = () => {
+                if (!video.isConnected) {
+                    return;
+                }
+
                 if (Math.abs(video.playbackRate - speed) >= 0.01) {
                     video.playbackRate = speed;
                 }
 
-                if (speedValue) {
+                if (speedValue && speedValue.isConnected) {
                     speedValue.textContent = speed.toFixed(2) + 'X';
                 }
 
-                if (speedButton) {
+                if (speedButton && speedButton.isConnected) {
                     speedButton.querySelectorAll('li[data-speed]').forEach(item => {
-                        item.classList.toggle('xt_video_player_common_active', Number(item.dataset.speed) === speed);
+                        item.classList.toggle(
+                            'xt_video_player_common_active',
+                            Number(item.dataset.speed) === speed
+                        );
                     });
                 }
             };
@@ -102,16 +151,18 @@ def set_video_speed(page: Page, speed: float = 2.0) -> None:
 
 
 def set_video_mute(page: Page) -> None:
-    """通过雨课堂原生音量按钮切换静音。"""
+    """确保视频静音，并同步雨课堂播放器的静音按钮。"""
+
+    video = page.locator("video.xt_video_player")
+    video.wait_for(state="attached", timeout=30000)
+
+    # 首先直接静音，避免等待播放器按钮时出现声音
+    mute_video_immediately(page)
 
     page.wait_for_selector(
         "xt-volumebutton.xt_video_player_volume",
         state="attached",
         timeout=15000
-    )
-
-    icon = page.locator(
-        "xt-volumebutton.xt_video_player_volume .xt_video_player_common_icon"
     )
 
     status = page.evaluate(
@@ -122,11 +173,13 @@ def set_video_mute(page: Page) -> None:
             );
 
             if (!video || !icon) {
-                return { success: false, error: '没有找到视频或音量按钮' };
+                return {success: false, error: '没有找到视频或音量按钮'};
             }
 
             return {
-                mutedIcon: icon.classList.contains('xt_video_player_common_icon_muted'),
+                mutedIcon: icon.classList.contains(
+                    'xt_video_player_common_icon_muted'
+                ),
                 muted: video.muted,
                 volume: video.volume
             };
@@ -136,34 +189,26 @@ def set_video_mute(page: Page) -> None:
     if not status.get("success", True):
         raise RuntimeError(f"读取播放器音量状态失败：{status}")
 
-    # 如果播放器尚未显示静音状态，则点击原生音量按钮
+    # 仅当原生图标没有显示静音时，才点击原生按钮
     if not status["mutedIcon"]:
-        print("正在点击雨课堂原生静音按钮……")
+        print("正在同步雨课堂原生静音按钮")
 
-        volume_button = page.locator("xt-volumebutton.xt_video_player_volume")
-
-        # 鼠标移动到播放器区域，使控制栏显示
         page.locator(".xt_video_player_wrap").hover()
-        volume_button.hover()
-        icon.click()
 
-    # 等待播放器自身更新图标和视频静音状态
-    try:
-        page.wait_for_function(
-            """() => {
-                const video = document.querySelector('video.xt_video_player');
-                const icon = document.querySelector(
-                    'xt-volumebutton.xt_video_player_volume .xt_video_player_common_icon'
-                );
-
-                return video && icon &&
-                    icon.classList.contains('xt_video_player_common_icon_muted') &&
-                    (video.muted || video.volume === 0);
-            }""",
-            timeout=5000
+        volume_button = page.locator(
+            "xt-volumebutton.xt_video_player_volume"
         )
-    except Exception:
-        pass
+
+        volume_button.hover()
+
+        page.locator(
+            "xt-volumebutton.xt_video_player_volume .xt_video_player_common_icon"
+        ).click()
+
+        page.wait_for_timeout(300)
+
+    # 再次强制设置视频元素静音，防止按钮操作改变实际音量
+    mute_video_immediately(page)
 
     result = page.evaluate(
         """() => {
@@ -171,12 +216,15 @@ def set_video_mute(page: Page) -> None:
             const icon = document.querySelector(
                 'xt-volumebutton.xt_video_player_volume .xt_video_player_common_icon'
             );
+
             const volumeText = document.querySelector(
                 '.xt_video_player_volume_value'
             );
 
             return {
-                mutedIcon: icon?.classList.contains('xt_video_player_common_icon_muted') ?? false,
+                mutedIcon: icon?.classList.contains(
+                    'xt_video_player_common_icon_muted'
+                ) ?? false,
                 muted: video?.muted ?? false,
                 volume: video?.volume ?? -1,
                 volumeText: volumeText?.textContent ?? '未知'
@@ -184,9 +232,9 @@ def set_video_mute(page: Page) -> None:
         }"""
     )
 
-    if not result["mutedIcon"] or not (result["muted"] or result["volume"] == 0):
-        raise RuntimeError(f"播放器原生静音设置失败：{result}")
-    
+    if not result["muted"] and result["volume"] != 0:
+        raise RuntimeError(f"视频静音设置失败：{result}")
+
     print(f"播放器音量：{result['volumeText']}")
 
 
@@ -200,7 +248,10 @@ def start_video(page: Page) -> None:
             const video = document.querySelector('video.xt_video_player');
 
             if (!video) {
-                return {success: false, error: '没有找到视频元素'};
+                return {
+                    success: false,
+                    error: '没有找到视频元素'
+                };
             }
 
             if (!video.paused) {
@@ -212,10 +263,13 @@ def start_video(page: Page) -> None:
                 };
             }
 
-            const playButton = document.querySelector('.xt_video_bit_play_btn');
+            const playButton = document.querySelector(
+                '.xt_video_bit_play_btn'
+            );
 
             if (playButton && playButton.getClientRects().length > 0) {
                 playButton.click();
+
                 await new Promise(resolve => setTimeout(resolve, 1000));
 
                 if (!video.paused) {
@@ -230,6 +284,7 @@ def start_video(page: Page) -> None:
 
             try {
                 await video.play();
+
                 await new Promise(resolve => setTimeout(resolve, 500));
 
                 return {
@@ -238,6 +293,7 @@ def start_video(page: Page) -> None:
                     paused: video.paused,
                     currentTime: video.currentTime
                 };
+
             } catch (error) {
                 return {
                     success: false,
@@ -256,19 +312,16 @@ def start_video(page: Page) -> None:
     print("视频已开始播放")
 
 
-
 def run_class(page: Page) -> None:
-    """设置 2 倍速、原生静音，并启动视频。"""
+    """设置 2 倍速、静音，并启动视频。"""
 
     print("等待视频播放器加载……")
 
     video = page.locator("video.xt_video_player")
-
     video.wait_for(state="attached", timeout=30000)
 
-    # 1. 视频元素出现后立即静音
-    print("视频元素已出现，立即执行静音")
-    set_video_mute(page)
+    # 1. 立即静音
+    mute_video_immediately(page)
 
     # 2. 等待视频元数据加载
     page.wait_for_function(
@@ -281,15 +334,14 @@ def run_class(page: Page) -> None:
 
     print("视频播放器已加载")
 
-    # 设置倍速
+    # 3. 设置 2 倍速
     print("准备设置视频倍速")
     set_video_speed(page, 2.0)
 
-    # 确认静音
+    # 4. 同步原生静音按钮
     set_video_mute(page)
 
-    # 启动视频
-    print("准备启动视频")
+    # 5. 启动视频
     start_video(page)
 
     # 6. 检查最终播放状态
@@ -311,4 +363,9 @@ def run_class(page: Page) -> None:
     if not result["muted"] and result["volume"] != 0:
         raise RuntimeError("视频没有保持静音状态")
 
+    if abs(result["playbackRate"] - 2.0) > 0.01:
+        raise RuntimeError("视频没有成功设置为 2 倍速")
+
     print("视频播放配置完成")
+    
+    
